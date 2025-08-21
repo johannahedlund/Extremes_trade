@@ -8,6 +8,7 @@ calculate_trade_risk <- function(shp_file, hist_folder, ssp_folder, crop_files, 
   
   
   # ETCCDI-----------------------------------------------------------------
+
   shp <- shapefile(shp_file)
   
   # get file names
@@ -20,7 +21,7 @@ calculate_trade_risk <- function(shp_file, hist_folder, ssp_folder, crop_files, 
     idx <- b[[which(getZ(b) >= "1995-01-01" & getZ(b) <= "2014-12-31")]]
   })
   
-  # resample - we resample to the fifth raster in the list
+  # resample (we use the fifth raster in the list as standard)
   standard <- hist_list[[5]]
   hist_resampled <- list(standard)
   for (i in 1:length(hist_list)) {
@@ -29,7 +30,7 @@ calculate_trade_risk <- function(shp_file, hist_folder, ssp_folder, crop_files, 
   hist_stack <- stack(hist_resampled)
   extent(hist_stack) <- extent(shp)
   
-  # NOW SAME FOR SSPS's
+  # now repeat for ssp's
   ssp_list <- lapply(ssp_files, function(x) {
     b <- brick(x)
     b[[which(getZ(b) >= "2081-01-01" & getZ(b) <= "2100-12-31")]]
@@ -43,10 +44,11 @@ calculate_trade_risk <- function(shp_file, hist_folder, ssp_folder, crop_files, 
   ssp_stack <- stack(ssp_resampled)
   extent(ssp_stack) <- extent(shp)
   
-  # Stack Rasters with combined means across years
+  # stack rasters with combined means across years
   E <- stack(mean(hist_stack, na.rm = TRUE), mean(ssp_stack, na.rm = TRUE))
   
   # MASK TO CROPPED AREAS--------------------------------------------------
+
   y_wheat <- raster(crop_files[1])
   y_rice <- raster(crop_files[2])
   y_maize <- raster(crop_files[3])
@@ -64,27 +66,28 @@ calculate_trade_risk <- function(shp_file, hist_folder, ssp_folder, crop_files, 
   E <- raster::mask(E, y)
   extent(E) <- extent(shp)
   
-  # Calculate Means and write directly to final data frame
+  # calculate means and write directly to final data frame
   for (i in 1:2) {
     dE <- raster::extract(E, shp, fun = mean, na.rm = TRUE, df = TRUE)
   }
   
-  #Get names from shapefile
+  # get names from shapefile
   dE$NAME <- shp$NAME
   
-  # Rename layer columns
+  # rename layer columns
   colnames(dE)[2:4] <- c("his","ssp","from")
   
-  # Calculate Deltas, round to 4 digits
+  # calculate climate deltas, round to 4 digits
   dE$d_ssp <- round((dE$ssp-dE$his)/dE$his, digits = 4) 
   
-  # Change NA to NaN
+  # change NA to NaN
   dE <- dE %>% mutate_all(~ifelse(is.na(.), NaN, .))
   
-  # Write dE to a CSV file
+  # write dE to a CSV file
   write.csv(dE, file = dE_output_file, row.names = FALSE)
   
   # CALCULATING TRADE RISK-------------------------------------------------
+
   t <- read_csv("Processed_FAO_data/traded_kcal_means.csv")[, -1]
   
   # read in fao names
@@ -103,15 +106,15 @@ calculate_trade_risk <- function(shp_file, hist_folder, ssp_folder, crop_files, 
   # remove South Sudan since it has no climate data
   t <- t[!grepl("South Sudan", t$to), ]
   
-  # Merge climate and trade data by source country and organize new dataframe
+  # merge climate and trade data by source country and organize new dataframe
   s <- merge(t, dE, by = "from") %>%
     relocate(to) %>%
     replace(is.na(.) | . == 'NA', 0)
   
-  # Multiplying trade fractions for every year to ssp delta in origin country
+  # multiplying trade fractions for every year to ssp delta in origin country
   v <- s %>% dplyr::mutate(across(starts_with("fraction"), ~ . * d_ssp))
   
-  # Write v to a CSV file
+  # write v to a CSV file
   write.csv(v, file = v_output_file, row.names = FALSE)
   
   # summing fractions by importer ( = total fractional imports for each country)
@@ -130,15 +133,15 @@ calculate_trade_risk <- function(shp_file, hist_folder, ssp_folder, crop_files, 
       sum2019 = sum(fraction2019, na.rm = TRUE)
     )
   
-  # calculating mean of trade-weighted exposure (summed fractions * ssp) across years
+  # calculating mean of imported exposure (summed fractions * ssp) across years
   sums <- sums %>%
     dplyr::mutate(years_mean = rowMeans(pick(starts_with("sum")), na.rm = TRUE))
   
-  # subsetting importer and fractional mean of trade-weighted exposure
+  # subsetting importer and fractional mean of imported exposure
   yearmean <- sums[, c("to", "years_mean")]
   colnames(yearmean) <- c("name", "mean")
   
-  # Write CSV, without row name column
+  # write CSV, without row name column
   write.csv(yearmean, file = output_file, row.names = FALSE)
 }
 
@@ -159,166 +162,3 @@ calculate_trade_risk(
   dE_output_file = "dE_r95p_ssp3_long.csv",
   v_output_file = "v_r95p_ssp3_long.csv"
 )
-=======
-##Create function
-
-calculate_trade_risk <- function(shp_file, hist_folder, ssp_folder, crop_files, output_file, dE_output_file, v_output_file) {
-  library(raster)
-  library(dplyr)
-  library(readr)
-  library(tidyr)
-  
-  
-  # ETCCDI-----------------------------------------------------------------
-  shp <- shapefile(shp_file)
-  
-  # get file names
-  hist_files <- list.files(hist_folder, full.names = TRUE)
-  ssp_files <- list.files(ssp_folder, full.names = TRUE)
-  
-  # read into a list, subsetting stack by date (1995-2014):
-  hist_list <- lapply(hist_files, function(x) {
-    b <- brick(x)
-    idx <- b[[which(getZ(b) >= "1995-01-01" & getZ(b) <= "2014-12-31")]]
-  })
-  
-  # resample - we resample to the sixth raster in the list
-  standard <- hist_list[[5]]
-  hist_resampled <- list(standard)
-  for (i in 1:length(hist_list)) {
-    hist_resampled[[i]] <- resample(hist_list[[i]], standard)
-  }
-  hist_stack <- stack(hist_resampled)
-  extent(hist_stack) <- extent(shp)
-  
-  # NOW SAME FOR SSPS's
-  ssp_list <- lapply(ssp_files, function(x) {
-    b <- brick(x)
-    b[[which(getZ(b) >= "2081-01-01" & getZ(b) <= "2100-12-31")]]
-  })
-  
-  standard <- ssp_list[[5]]
-  ssp_resampled <- list(standard)
-  for (i in 1:length(ssp_list)) {
-    ssp_resampled[[i]] <- resample(ssp_list[[i]], standard)
-  }
-  ssp_stack <- stack(ssp_resampled)
-  extent(ssp_stack) <- extent(shp)
-  
-  # Stack Rasters with combined means across years
-  E <- stack(mean(hist_stack, na.rm = TRUE), mean(ssp_stack, na.rm = TRUE))
-  
-  # MASK TO CROPPED AREAS--------------------------------------------------
-  y_wheat <- raster(crop_files[1])
-  y_rice <- raster(crop_files[2])
-  y_maize <- raster(crop_files[3])
-  y_maizefor <- raster(crop_files[4])
-  y_soy <- raster(crop_files[5])
-  
-  y <- stack(y_wheat, y_rice, y_maize, y_maizefor,y_soy)
-  y <- raster::calc(y, fun = sum)
-  
-  # resample - we resample to the crop data with better resolution
-  E <- resample(E, y)
-  
-  # mask E to cropped areas
-  y[y == 0] <- NA
-  E <- raster::mask(E, y)
-  extent(E) <- extent(shp)
-  
-  # Calculate Means and write directly to final data frame
-  for (i in 1:2) {
-    dE <- raster::extract(E, shp, fun = mean, na.rm = TRUE, df = TRUE)
-  }
-  
-  #Get names from shapefile
-  dE$NAME <- shp$NAME
-  
-  # Rename layer columns
-  colnames(dE)[2:4] <- c("his","ssp","from")
-  
-  # Calculate Deltas, round to 4 digits
-  dE$d_ssp <- round((dE$ssp-dE$his)/dE$his, digits = 4) 
-  
-  # Change NA to NaN
-  dE <- dE %>% mutate_all(~ifelse(is.na(.), NaN, .))
-  
-  # Write dE to a CSV file
-  write.csv(dE, file = dE_output_file, row.names = FALSE)
-  
-  # CALCULATING TRADE RISK-------------------------------------------------
-  t <- read_csv("Processed_FAO_data/traded_kcal_means.csv")[, -1]
-  
-  # read in fao names
-  fao_names <- read_tsv("Processed_FAO_data/fao_names_2.csv")
-  
-  # join to t table
-  t <- t %>%
-    dplyr::mutate(id = row_number()) %>%
-    pivot_longer(cols = to:from, names_to = "dir", values_to = "country") %>%
-    left_join(fao_names, by = c("country" = "original")) %>%
-    mutate(fao_tradename = ifelse(is.na(fao_tradename), country, fao_tradename)) %>%
-    dplyr::select(-country) %>%
-    pivot_wider(names_from = dir, values_from = fao_tradename) %>%
-    dplyr::select(-id)
-  
-  # remove South Sudan since it has no climate data
-  t <- t[!grepl("South Sudan", t$to), ]
-  
-  # Merge climate and trade data by source country and organize new dataframe
-  s <- merge(t, dE, by = "from") %>%
-    relocate(to) %>%
-    replace(is.na(.) | . == 'NA', 0)
-  
-  # Multiplying trade fractions for every year to ssp delta in origin country
-  v <- s %>% dplyr::mutate(across(starts_with("fraction"), ~ . * d_ssp))
-  
-  # Write v to a CSV file
-  write.csv(v, file = v_output_file, row.names = FALSE)
-  
-  # summing fractions by importer ( = total fractional imports for each country)
-  sums <- v %>%
-    dplyr::group_by(to) %>%
-    dplyr::summarise(
-      sum2010 = sum(fraction2010, na.rm = TRUE),
-      sum2011 = sum(fraction2011, na.rm = TRUE),
-      sum2012 = sum(fraction2012, na.rm = TRUE),
-      sum2013 = sum(fraction2013, na.rm = TRUE),
-      sum2014 = sum(fraction2014, na.rm = TRUE),
-      sum2015 = sum(fraction2015, na.rm = TRUE),
-      sum2016 = sum(fraction2016, na.rm = TRUE),
-      sum2017 = sum(fraction2017, na.rm = TRUE),
-      sum2018 = sum(fraction2018, na.rm = TRUE),
-      sum2019 = sum(fraction2019, na.rm = TRUE)
-    )
-  
-  # calculating mean of trade-weighted exposure (summed fractions * ssp) across years
-  sums <- sums %>%
-    dplyr::mutate(years_mean = rowMeans(pick(starts_with("sum")), na.rm = TRUE))
-  
-  # subsetting importer and fractional mean of trade-weighted exposure
-  yearmean <- sums[, c("to", "years_mean")]
-  colnames(yearmean) <- c("name", "mean")
-  
-  # Write CSV, without row name column
-  write.csv(yearmean, file = output_file, row.names = FALSE)
-}
-
-## Call function
-
-calculate_trade_risk(
-  shp_file = "World_Borders_Shapefiles/WB.shp",
-  hist_folder = "R95p/Historical",
-  ssp_folder = "R95p/SSP3",
-  crop_files = c(
-    "CROPGRID/CROPGRIDSv1.08_wheat.nc",
-    "CROPGRID/CROPGRIDSv1.08_rice.nc",
-    "CROPGRID/CROPGRIDSv1.08_maize.nc",
-    "CROPGRID/CROPGRIDSv1.08_maizefor.nc",
-    "CROPGRID/CROPGRIDSv1.08_soybean.nc"
-  ),
-  output_file = "ex_r95p_ssp3_long.csv",
-  dE_output_file = "dE_r95p_ssp3_long.csv",
-  v_output_file = "v_r95p_ssp3_long.csv"
-)
->>>>>>> 59fea37b9b8e7dc4d01b89ed81fde8fb5b3c8a2d
