@@ -1,5 +1,4 @@
-<<<<<<< HEAD
-##Create function
+## Create function
 
 calculate_trade_risk <- function(shp_file, hist_folder, ssp_folder, crop_files, output_file, dE_output_file, v_output_file) {
   library(raster)
@@ -21,7 +20,7 @@ calculate_trade_risk <- function(shp_file, hist_folder, ssp_folder, crop_files, 
     idx <- b[[which(getZ(b) >= "1995-01-01" & getZ(b) <= "2014-12-31")]]
   })
   
-  # resample - we resample to the sixth raster in the list
+  # resample - we resample to the fifth raster in the list
   standard <- hist_list[[5]]
   hist_resampled <- list(standard)
   for (i in 1:length(hist_list)) {
