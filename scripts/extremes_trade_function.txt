@@ -30,10 +30,10 @@ calculate_trade_risk <- function(shp_file, hist_folder, ssp_folder, crop_files, 
   hist_stack <- stack(hist_resampled)
   extent(hist_stack) <- extent(shp)
   
-  # now repeat for ssp's
+  # now repeat for ssp's (Near-term = 2021-2040, Mid-term = 2041-2060)
   ssp_list <- lapply(ssp_files, function(x) {
     b <- brick(x)
-    b[[which(getZ(b) >= "2081-01-01" & getZ(b) <= "2100-12-31")]]
+    b[[which(getZ(b) >= "2021-01-01" & getZ(b) <= "2040-12-31")]]
   })
   
   standard <- ssp_list[[5]]
@@ -145,7 +145,7 @@ calculate_trade_risk <- function(shp_file, hist_folder, ssp_folder, crop_files, 
   write.csv(yearmean, file = output_file, row.names = FALSE)
 }
 
-## Call function
+## Call function (here for R95p, can be replaced by Tx90p, CDD)
 
 calculate_trade_risk(
   shp_file = "World_Borders_Shapefiles/WB.shp",
@@ -158,7 +158,7 @@ calculate_trade_risk(
     "CROPGRID/CROPGRIDSv1.08_maizefor.nc",
     "CROPGRID/CROPGRIDSv1.08_soybean.nc"
   ),
-  output_file = "ex_r95p_ssp3_long.csv",
-  dE_output_file = "dE_r95p_ssp3_long.csv",
-  v_output_file = "v_r95p_ssp3_long.csv"
+  output_file = "ex_r95p_ssp3_near.csv",
+  dE_output_file = "dE_r95p_ssp3_near.csv",
+  v_output_file = "v_r95p_ssp3_near.csv"
 )
